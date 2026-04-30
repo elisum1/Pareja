@@ -13,19 +13,11 @@ if (fs.existsSync(envPath)) {
 }
 
 const envSchema = z.object({
-<<<<<<< HEAD
-  PORT: z.coerce.number().int().positive().default(4008),
-  SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
-  JWT_SECRET: z.string().min(16),
-  APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
-  API_BASE_URL: z.string().url().default("http://localhost:4008"),
-=======
   PORT: z.coerce.number().int().positive().default(10000),
   SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
   JWT_SECRET: z.string().min(16),
   APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
-  API_BASE_URL: z.string().url().default("apimobile-mnwv.onrender.com"),
->>>>>>> 453043c (Backend commit for Pareja)
+  API_BASE_URL: z.string().url().default("http://localhost:4008"),
   WHATSAPP_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
