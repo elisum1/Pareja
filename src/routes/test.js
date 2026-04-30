@@ -3,8 +3,8 @@ const crypto = require("crypto");
 const { z } = require("zod");
 const { db, dbQuery } = require("../db");
 const { requireAuth } = require("../auth/middleware");
-const { categories, computeWeightsFromOrder } = require("../domain/testModel");
-const { relationTests, getRelationTest, computeRelationResult } = require("../domain/relationTestModel");
+const { categories, computeWeightsFromOrder, computeUserResults, tipsForCategory } = require("../domain/testModel");
+const { relationTests, getRelationTest } = require("../domain/relationTestModel");
 
 const testRouter = express.Router();
 
@@ -142,8 +142,7 @@ testRouter.get("/relation/:testType/questions", requireAuth, async (req, res) =>
     testType,
     title: test.title,
     subtitle: test.subtitle,
-    questions: test.questions.map((q) => ({ id: q.id, category_key: q.category_key, text: q.text })),
-    categories: test.categories
+    questions: await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc")
   });
 });
 
@@ -161,11 +160,16 @@ testRouter.post("/relation/:testType/submit", requireAuth, async (req, res) => {
   }
 
   const test = relationTests[testType];
-  const total = test.questions.length;
-  const answered = test.questions.reduce((acc, q) => acc + (parsed.data.answers[String(q.id)] !== undefined ? 1 : 0), 0);
+  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+  const total = questions.length;
+  const answered = questions.reduce((acc, q) => acc + (parsed.data.answers[String(q.id)] !== undefined ? 1 : 0), 0);
   const completed = total > 0 && answered === total;
   const completedInt = completed ? 1 : 0;
-  const computed = computeRelationResult(testType, parsed.data.answers);
+  const priority = await loadPriorityForUser(userId);
+  const computed = computeUserResults(questions, parsed.data.answers, priority.weightsByKey);
+  const tips = computed.byCategory
+    .flatMap((c) => tipsForCategory(c.key, c.score).map((text) => ({ category: c.label, text })))
+    .slice(0, 10);
 
   const existing = await dbQuery("select id from relation_test_result where user_id=? and test_type=? limit 1", [userId, testType]);
   if (existing[0]) {
@@ -173,16 +177,16 @@ testRouter.post("/relation/:testType/submit", requireAuth, async (req, res) => {
       "update relation_test_result set answers=?, score=?, classification=?, by_category=?, tips=?, completed=?, completed_at=case when ? then strftime('%Y-%m-%dT%H:%M:%fZ','now') else null end, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
       [
         JSON.stringify(parsed.data.answers),
-        computed?.score ?? 0,
-        computed?.classification ?? "MEJORABLE",
+        computed?.ponderado ?? 0,
+        computed?.clasificacion ?? "MEJORABLE",
         JSON.stringify(computed?.byCategory ?? []),
-        JSON.stringify(computed?.tips ?? []),
+        JSON.stringify(tips),
         completedInt,
         completedInt,
         existing[0].id
       ]
     );
-    res.json({ result: { id: existing[0].id, testType, completed, answered, total, score: computed?.score ?? 0 } });
+    res.json({ result: { id: existing[0].id, testType, completed, answered, total, score: computed?.ponderado ?? 0 } });
     return;
   }
 
@@ -194,15 +198,25 @@ testRouter.post("/relation/:testType/submit", requireAuth, async (req, res) => {
       userId,
       testType,
       JSON.stringify(parsed.data.answers),
-      computed?.score ?? 0,
-      computed?.classification ?? "MEJORABLE",
+      computed?.ponderado ?? 0,
+      computed?.clasificacion ?? "MEJORABLE",
       JSON.stringify(computed?.byCategory ?? []),
-      JSON.stringify(computed?.tips ?? []),
+      JSON.stringify(tips),
       completedInt,
       completedInt
     ]
   );
-  res.json({ result: { id, testType, completed, answered, total, score: computed?.score ?? 0 } });
+  res.json({ result: { id, testType, completed, answered, total, score: computed?.ponderado ?? 0 } });
 });
+
+async function loadPriorityForUser(userId) {
+  const defaultOrder = categories.map((c) => c.key);
+  const rows = await dbQuery("select category_key, rank from user_priority where user_id=? order by rank asc", [userId]);
+  if (rows.length !== categories.length) {
+    return { order: defaultOrder, weightsByKey: null };
+  }
+  const order = rows.map((r) => r.category_key);
+  return { order, weightsByKey: computeWeightsFromOrder(order) };
+}
 
 module.exports = { testRouter };
