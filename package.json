@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
+    "build": "node -e \"if(process.platform==='linux'){require('child_process').execSync('npm rebuild better-sqlite3 --build-from-source',{stdio:'inherit'})}\"",
+    "postinstall": "node -e \"if(process.platform==='linux'){require('child_process').execSync('npm rebuild better-sqlite3 --build-from-source',{stdio:'inherit'})}\"",
     "db:migrate": "node scripts/migrate.js",
     "smoke": "node scripts/smoke.js"
   },
@@ -13,6 +15,9 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": "20.x || 22.x"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",
