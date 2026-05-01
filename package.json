@@ -4,7 +4,7 @@
   "private": true,
   "main": "src/index.js",
   "scripts": {
-    "build": "npm run db:migrate",
+    "build": "npm run db:migrate && node scripts/ensureBuildDir.js",
     "dev": "node src/index.js",
     "start": "node src/index.js",
     "db:migrate": "node scripts/migrate.js",
