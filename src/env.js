@@ -22,7 +22,9 @@ const envSchema = z.object({
   WHATSAPP_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_WHATSAPP_FROM: z.string().optional()
+  TWILIO_WHATSAPP_FROM: z.string().optional(),
+  /** Orígenes extra para CORS, separados por coma (ej. Expo Web: http://192.168.18.35:8081) */
+  CORS_EXTRA_ORIGINS: z.string().optional()
 });
 
 let env;

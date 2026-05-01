@@ -7,6 +7,27 @@ const { invitesRouter } = require("./routes/invites");
 const { testRouter } = require("./routes/test");
 const { resultsRouter } = require("./routes/results");
 
+const LAN_ORIGIN_RE = /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
+const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+function corsOriginCallback(origin, callback) {
+  if (!origin) {
+    return callback(null, true);
+  }
+  const extras = String(env.CORS_EXTRA_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (extras.includes(origin)) {
+    return callback(null, true);
+  }
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev && (LAN_ORIGIN_RE.test(origin) || LOCAL_ORIGIN_RE.test(origin))) {
+    return callback(null, true);
+  }
+  return callback(null, true);
+}
+
 function createApp() {
   const app = express();
 
@@ -14,13 +35,24 @@ function createApp() {
     app.set("trust proxy", 1);
   }
 
-  app.use(cors());
+  app.use(
+    cors({
+      origin: corsOriginCallback,
+      credentials: true
+    })
+  );
   app.use(express.json({ limit: "2mb" }));
   app.use((req, res, next) => {
     const startedAt = Date.now();
+    const origin = req.headers.origin ?? "(sin Origin — típico en Expo Go / app nativa)";
+    const ua = req.headers["user-agent"] ?? "";
+    console.log("[api:req]", req.method, req.originalUrl, "| Origin:", origin, "| IP:", req.ip || req.socket.remoteAddress);
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+      console.log("[api:req] user-agent:", ua.slice(0, 120) + (ua.length > 120 ? "…" : ""));
+    }
     res.on("finish", () => {
       const ms = Date.now() - startedAt;
-      process.stdout.write(`[${res.statusCode}] ${req.method} ${req.originalUrl} ${ms}ms\n`);
+      console.log(`[api:res] ${res.statusCode} ${req.method} ${req.originalUrl} ${ms}ms`);
     });
     next();
   });
