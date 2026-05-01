@@ -18,7 +18,7 @@ const envSchema = z.object({
   SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
   JWT_SECRET: z.string().min(16),
   APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
-  API_BASE_URL: z.string().url().default("http://localhost:4008"),
+  API_BASE_URL: z.string().url().default("http://localhost:10000"),
   WHATSAPP_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
