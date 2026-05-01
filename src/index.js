@@ -50,11 +50,12 @@ function createApp() {
 
 function startServer(opts) {
   const port = opts?.port ?? env.PORT;
+  const host = opts?.host ?? env.HOST;
   const app = createApp();
-  const server = app.listen(port, () => {
+  const server = app.listen(port, host, () => {
     const address = server.address();
     const actualPort = address && typeof address === "object" ? address.port : port;
-    process.stdout.write(`API listening on http://localhost:${actualPort}\n`);
+    process.stdout.write(`API listening on http://${host}:${actualPort}\n`);
   });
   return { app, server };
 }

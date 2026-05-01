@@ -14,6 +14,7 @@ if (fs.existsSync(envPath)) {
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(10000),
+  HOST: z.string().min(1).default("0.0.0.0"),
   SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
   JWT_SECRET: z.string().min(16),
   APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
