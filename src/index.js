@@ -10,6 +10,9 @@ const { resultsRouter, getCategoryDetailHandler } = require("./routes/results");
 const { linkedRouter } = require("./routes/linked");
 const { usersRouter } = require("./routes/users");
 
+/** Cambia al desplegar para verificar que Render sirve la build nueva. */
+const API_VERSION = "2025.05.18-onboarding";
+
 const LAN_ORIGIN_RE = /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
 const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
@@ -74,7 +77,12 @@ function createApp() {
   app.get("/health", async (_req, res) => {
     try {
       await dbQuery("select 1 as ok");
-      res.json({ ok: true, db: "ok" });
+      res.json({
+        ok: true,
+        db: "ok",
+        version: API_VERSION,
+        routes: ["auth/check-username", "auth/me/onboarding"]
+      });
     } catch (e) {
       res.status(500).json({ ok: false, db: "error", error: e?.message ?? String(e) });
     }
