@@ -1,16 +1,22 @@
+/**
+ * Test pareja — Evaluador de Relaciones (v2).
+ * 10 categorías, sin "Físico". Ponderación por orden de prioridad: 19% … 5% (PDF).
+ */
+const { getBinaryAnswer } = require("./coupleTestAnswers");
 const categories = [
-  { key: "eco", label: "Estabilidad económica", weight: 0.15, maxYes: 3 },
-  { key: "respeto", label: "Respeto", weight: 0.13, maxYes: 4 },
-  { key: "tolerancia", label: "Tolerancia", weight: 0.12, maxYes: 6 },
-  { key: "confianza", label: "Confianza", weight: 0.11, maxYes: 3 },
-  { key: "comunicacion", label: "Comunicación", weight: 0.1, maxYes: 4 },
-  { key: "diversion", label: "Diversión", weight: 0.09, maxYes: 3 },
-  { key: "sexo", label: "Sexo", weight: 0.08, maxYes: 3 },
-  { key: "social", label: "Social", weight: 0.07, maxYes: 4 },
-  { key: "salud", label: "Salud", weight: 0.06, maxYes: 4 },
-  { key: "organizacion", label: "Organización", weight: 0.05, maxYes: 2 },
-  { key: "fisico", label: "Físico", weight: 0.04, maxYes: 5 }
+  { key: "eco", label: "Estabilidad económica", weight: 0.19, maxYes: 5 },
+  { key: "respeto", label: "Respeto", weight: 0.13, maxYes: 5 },
+  { key: "tolerancia", label: "Tolerancia (aceptación y flexibilidad)", weight: 0.12, maxYes: 6 },
+  { key: "confianza", label: "Confianza", weight: 0.11, maxYes: 6 },
+  { key: "comunicacion", label: "Comunicación", weight: 0.1, maxYes: 8 },
+  { key: "diversion", label: "Diversión", weight: 0.09, maxYes: 4 },
+  { key: "intimidad", label: "Intimidad", weight: 0.08, maxYes: 5 },
+  { key: "convivencia_social", label: "Convivencia social", weight: 0.07, maxYes: 4 },
+  { key: "cuidado_personal", label: "Cuidado personal", weight: 0.06, maxYes: 4 },
+  { key: "organizacion", label: "Organización", weight: 0.05, maxYes: 2 }
 ];
+
+const TOTAL_QUESTIONS = categories.reduce((a, c) => a + c.maxYes, 0);
 
 function computeWeightsFromOrder(orderKeys) {
   const keys = categories.map((c) => c.key);
@@ -26,7 +32,7 @@ function computeWeightsFromOrder(orderKeys) {
     }, {});
   }
 
-  const byRank = [0.15, 0.13, 0.12, 0.11, 0.1, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04];
+  const byRank = [0.19, 0.13, 0.12, 0.11, 0.1, 0.09, 0.08, 0.07, 0.06, 0.05];
   return order.reduce((acc, key, idx) => {
     acc[key] = byRank[idx] ?? 0;
     return acc;
@@ -42,17 +48,15 @@ function computeUserResults(questions, answers, weightsByKey) {
 
   const byCategory = categories.map((c) => {
     const qs = questions.filter((q) => q.category_key === c.key);
-    const yes = qs.reduce((acc, q) => acc + (answers[String(q.id)] === 1 ? 1 : 0), 0);
+    const yes = qs.reduce((acc, q) => acc + (getBinaryAnswer(answers, q.id) === 1 ? 1 : 0), 0);
     const total = qs.length;
     const score = total === 0 ? 0 : yes / total;
     const weight = typeof weights[c.key] === "number" ? weights[c.key] : c.weight;
     return { key: c.key, label: c.label, yes, total, score, weight };
   });
 
-  const yesSinFisico = byCategory.filter((c) => c.key !== "fisico").reduce((a, c) => a + c.yes, 0);
-  const yesConFisico = byCategory.reduce((a, c) => a + c.yes, 0);
-  const generalSinFisico = clamp01(yesSinFisico / 36);
-  const generalConFisico = clamp01(yesConFisico / 41);
+  const yesTotal = byCategory.reduce((a, c) => a + c.yes, 0);
+  const generalRatio = TOTAL_QUESTIONS > 0 ? clamp01(yesTotal / TOTAL_QUESTIONS) : 0;
   const ponderado = clamp01(byCategory.reduce((a, c) => a + c.score * c.weight, 0));
 
   const metric = ponderado;
@@ -63,7 +67,14 @@ function computeUserResults(questions, answers, weightsByKey) {
     return acc;
   }, {});
 
-  return { byCategory, generalSinFisico, generalConFisico, ponderado, clasificacion, weightsUsed };
+  return {
+    byCategory,
+    generalSinFisico: generalRatio,
+    generalConFisico: generalRatio,
+    ponderado,
+    clasificacion,
+    weightsUsed
+  };
 }
 
 function clamp01(n) {
@@ -72,10 +83,10 @@ function clamp01(n) {
 }
 
 const extraQuestionsByCategory = {
-  sexo: [
+  intimidad: [
     "¿Con qué frecuencia te gustaría tener relaciones?",
-    "¿Has hablado abiertamente de tus fantasías?",
-    "¿Sientes que su deseo sexual es compatible con el tuyo?"
+    "¿Has hablado abiertamente de lo que te gusta en la intimidad?",
+    "¿Sientes que su deseo es compatible con el tuyo?"
   ],
   comunicacion: [
     "¿Qué tema evitas porque sientes que terminará en discusión?",
@@ -90,6 +101,10 @@ const extraQuestionsByCategory = {
   organizacion: [
     "¿Qué tarea del hogar sientes que cargas más tú?",
     "¿Cómo se reparten gastos y responsabilidades hoy?"
+  ],
+  convivencia_social: [
+    "¿Qué evento social te gustaría compartir más seguido con tu pareja?",
+    "¿Hay algún límite claro que quieras acordar con familia o amigos?"
   ]
 };
 

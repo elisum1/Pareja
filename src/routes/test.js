@@ -4,6 +4,7 @@ const { z } = require("zod");
 const { db, dbQuery } = require("../db");
 const { requireAuth } = require("../auth/middleware");
 const { categories, computeWeightsFromOrder } = require("../domain/testModel");
+const { normalizeAnswersForPersist } = require("../domain/coupleTestAnswers");
 const { relationTests, getRelationTest, computeRelationResult } = require("../domain/relationTestModel");
 
 const testRouter = express.Router();
@@ -78,7 +79,7 @@ testRouter.post("/priorities", requireAuth, async (req, res) => {
 });
 
 const submitSchema = z.object({
-  answers: z.record(z.string(), z.union([z.literal(0), z.literal(1)]))
+  answers: z.record(z.string(), z.any())
 });
 
 testRouter.post("/submit", requireAuth, async (req, res) => {
@@ -90,16 +91,29 @@ testRouter.post("/submit", requireAuth, async (req, res) => {
   }
 
   const questions = await dbQuery("select id from test_question order by id asc");
-  const total = questions.length;
-  const answered = questions.reduce((acc, q) => acc + (parsed.data.answers[String(q.id)] !== undefined ? 1 : 0), 0);
-  const completed = total > 0 && answered === total;
+  const questionIds = questions.map((q) => q.id);
+  const total = questionIds.length;
+  const { answers: normalizedAnswers, missing } = normalizeAnswersForPersist(parsed.data.answers, questionIds);
+  const answered = total - missing.length;
+
+  if (missing.length > 0) {
+    res.status(400).json({
+      error: "BAD_REQUEST",
+      message: "Cada pregunta debe tener respuesta 0 o 1 (Sí/No).",
+      missingQuestionIds: missing.slice(0, 48),
+      missingCount: missing.length
+    });
+    return;
+  }
+
+  const completed = total > 0;
   const completedInt = completed ? 1 : 0;
 
   const existing = await dbQuery("select id from test_response where user_id=? limit 1", [userId]);
   if (existing[0]) {
     await dbQuery(
       "update test_response set answers=?, completed=?, completed_at=case when ? then strftime('%Y-%m-%dT%H:%M:%fZ','now') else null end, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
-      [JSON.stringify(parsed.data.answers), completedInt, completedInt, existing[0].id]
+      [JSON.stringify(normalizedAnswers), completedInt, completedInt, existing[0].id]
     );
     res.json({ response: { id: existing[0].id, completed, answered, total } });
     return;
@@ -108,9 +122,26 @@ testRouter.post("/submit", requireAuth, async (req, res) => {
   const responseId = require("crypto").randomUUID();
   await dbQuery(
     "insert into test_response (id, user_id, answers, completed, completed_at, updated_at) values (?, ?, ?, ?, case when ? then strftime('%Y-%m-%dT%H:%M:%fZ','now') else null end, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
-    [responseId, userId, JSON.stringify(parsed.data.answers), completedInt, completedInt]
+    [responseId, userId, JSON.stringify(normalizedAnswers), completedInt, completedInt]
   );
   res.json({ response: { id: responseId, completed, answered, total } });
+});
+
+testRouter.post("/reset", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const existing = await dbQuery("select id from test_response where user_id=? limit 1", [userId]);
+  if (existing[0]) {
+    await dbQuery(
+      "update test_response set answers='{}', completed=0, completed_at=null, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where user_id=?",
+      [userId]
+    );
+  } else {
+    await dbQuery(
+      "insert into test_response (id, user_id, answers, completed, updated_at) values (?, ?, '{}', 0, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+      [crypto.randomUUID(), userId]
+    );
+  }
+  res.json({ ok: true });
 });
 
 testRouter.get("/status", requireAuth, async (req, res) => {

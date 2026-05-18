@@ -44,7 +44,12 @@ function resolveCategoryKey(rawCategory) {
     ["comunicacion", "comunicacion"],
     ["diversion", "diversion"],
     ["organizacion", "organizacion"],
-    ["fisico", "fisico"]
+    ["intimidad", "intimidad"],
+    ["sexo", "intimidad"],
+    ["convivencia social", "convivencia_social"],
+    ["social", "convivencia_social"],
+    ["cuidado personal", "cuidado_personal"],
+    ["salud", "cuidado_personal"]
   ]);
   if (synonyms.has(v)) return synonyms.get(v);
 
@@ -161,12 +166,22 @@ async function main() {
   const sqlPath = path.join(__dirname, "..", "db", "migrations", "001_init_sqlite.sql");
   const sql = fs.readFileSync(sqlPath, "utf8");
 
+  const sql002Path = path.join(__dirname, "..", "db", "migrations", "002_reseed_couple_test_v2.sql");
+  const sql002 = fs.existsSync(sql002Path) ? fs.readFileSync(sql002Path, "utf8") : "";
+
   const dbPath = path.isAbsolute(env.SQLITE_PATH) ? env.SQLITE_PATH : path.join(__dirname, "..", env.SQLITE_PATH);
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   const db = new Database(dbPath);
   try {
     db.exec(sql);
+    const applied002 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_v2");
+    if (!applied002?.ok && sql002) {
+      db.exec(sql002);
+      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_v2");
+    }
+    ensureAppUserProfileColumns(db);
+    ensureInviteColumns(db);
     const args = process.argv.slice(2);
     const questionsPathArgIndex = args.findIndex((a) => a === "--questions" || a === "--preguntas");
     const questionsPathFromArg = questionsPathArgIndex >= 0 ? args[questionsPathArgIndex + 1] : null;
@@ -198,6 +213,47 @@ async function main() {
   } finally {
     db.close();
   }
+}
+
+function ensureAppUserProfileColumns(db) {
+  const cols = db.prepare("pragma table_info(app_user)").all();
+  const names = new Set(cols.map((c) => String(c.name || "").toLowerCase()));
+  if (!names.has("display_name")) {
+    db.exec("alter table app_user add column display_name text;");
+  }
+  if (!names.has("photo_url")) {
+    db.exec("alter table app_user add column photo_url text;");
+  }
+  if (!names.has("username")) {
+    db.exec("alter table app_user add column username text;");
+  }
+  if (!names.has("age")) {
+    db.exec("alter table app_user add column age integer;");
+  }
+  if (!names.has("phone")) {
+    db.exec("alter table app_user add column phone text;");
+  }
+  if (!names.has("country")) {
+    db.exec("alter table app_user add column country text;");
+  }
+  if (!names.has("city")) {
+    db.exec("alter table app_user add column city text;");
+  }
+  if (!names.has("bio")) {
+    db.exec("alter table app_user add column bio text;");
+  }
+  db.exec(
+    "create unique index if not exists app_user_username_unique on app_user(lower(username)) where username is not null;"
+  );
+}
+
+function ensureInviteColumns(db) {
+  const cols = db.prepare("pragma table_info(invite)").all();
+  const names = new Set(cols.map((c) => String(c.name || "").toLowerCase()));
+  if (!names.has("target_user_id")) {
+    db.exec("alter table invite add column target_user_id text references app_user(id) on delete set null;");
+  }
+  db.exec("create index if not exists invite_target_user_idx on invite(target_user_id);");
 }
 
 main().catch((e) => {

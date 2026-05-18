@@ -2,7 +2,14 @@ const express = require("express");
 const { dbQuery } = require("../db");
 const { requireAuth } = require("../auth/middleware");
 const { categories, computeWeightsFromOrder, computeUserResults, extraQuestionsByCategory, tipsForCategory } = require("../domain/testModel");
+const { buildCategoryDetailReport } = require("../domain/categoryDetailExplainer");
 const { relationTests } = require("../domain/relationTestModel");
+const {
+  buildFollowUpPlan,
+  buildMainTestNoInsightBlocks,
+  categoryKeysWithMainTestNo
+} = require("../domain/partnerFollowUp");
+const { parseAnswersField } = require("../domain/coupleTestAnswers");
 
 const resultsRouter = express.Router();
 
@@ -18,7 +25,7 @@ resultsRouter.get("/", requireAuth, async (req, res) => {
     return;
   }
 
-  const meAnswers = typeof me.answers === "string" ? JSON.parse(me.answers || "{}") : me.answers ?? {};
+  const meAnswers = parseAnswersField(me.answers);
   const myPriority = await loadPriorityForUser(userId);
   const myResults = computeUserResults(questions, meAnswers, myPriority.weightsByKey);
   myResults.priorityOrder = myPriority.order;
@@ -46,15 +53,170 @@ resultsRouter.get("/", requireAuth, async (req, res) => {
     return;
   }
 
-  const partnerAnswers = typeof partner.answers === "string" ? JSON.parse(partner.answers || "{}") : partner.answers ?? {};
+  const partnerAnswers = parseAnswersField(partner.answers);
   const partnerPriority = await loadPriorityForUser(partnerId);
   const partnerResults = computeUserResults(questions, partnerAnswers, partnerPriority.weightsByKey);
   partnerResults.priorityOrder = partnerPriority.order;
 
+  const partnerUserRows = await dbQuery(
+    "select coalesce(nullif(trim(display_name),''), username, email) as label from app_user where id=? limit 1",
+    [partnerId]
+  );
+  const partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
+  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+  const partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
+  const myCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, meAnswers);
+
   res.json({
     me: myResults,
     partner: { userId: partnerId, completed: true, results: partnerResults },
+    partnerLabel,
+    partnerMainTestNos,
+    partnerCategoryKeysWithNo,
+    myCategoryKeysWithNo,
     insights: buildInsights(myResults, partnerResults)
+  });
+});
+
+resultsRouter.get("/partner/:partnerUserId", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const partnerId = String(req.params.partnerUserId || "");
+  if (!partnerId || partnerId === userId) {
+    res.status(400).json({ error: "BAD_REQUEST" });
+    return;
+  }
+
+  const link = await dbQuery(
+    "select user_a_id, user_b_id from couple where (user_a_id=? and user_b_id=?) or (user_a_id=? and user_b_id=?) limit 1",
+    [userId, partnerId, partnerId, userId]
+  );
+  if (!link[0]) {
+    res.status(404).json({ error: "PARTNER_LINK_NOT_FOUND" });
+    return;
+  }
+
+  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+
+  const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
+  const me = meRows[0];
+  if (!me || !Boolean(me.completed)) {
+    res.status(409).json({ error: "TEST_NOT_COMPLETED" });
+    return;
+  }
+
+  const meAnswers = parseAnswersField(me.answers);
+  const myPriority = await loadPriorityForUser(userId);
+  const myResults = computeUserResults(questions, meAnswers, myPriority.weightsByKey);
+  myResults.priorityOrder = myPriority.order;
+
+  const partnerRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [partnerId]);
+  const partner = partnerRows[0];
+
+  let partnerPayload;
+  let insightsPartner = null;
+  if (!partner || !Boolean(partner.completed)) {
+    partnerPayload = { userId: partnerId, completed: false, results: null };
+  } else {
+    const partnerAnswers = parseAnswersField(partner.answers);
+    const partnerPriority = await loadPriorityForUser(partnerId);
+    const partnerResults = computeUserResults(questions, partnerAnswers, partnerPriority.weightsByKey);
+    partnerResults.priorityOrder = partnerPriority.order;
+    partnerPayload = { userId: partnerId, completed: true, results: partnerResults };
+    insightsPartner = partnerResults;
+  }
+
+  const myCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, meAnswers);
+
+  let partnerLabel = null;
+  let partnerMainTestNos = null;
+  let partnerCategoryKeysWithNo = null;
+  if (partnerPayload?.completed && partnerPayload.results) {
+    const partnerAnswers = parseAnswersField(partner.answers);
+    const partnerUserRows = await dbQuery(
+      "select coalesce(nullif(trim(display_name),''), username, email) as label from app_user where id=? limit 1",
+      [partnerId]
+    );
+    partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
+    partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+    partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
+  }
+
+  res.json({
+    me: myResults,
+    partner: partnerPayload,
+    partnerLabel,
+    partnerMainTestNos,
+    partnerCategoryKeysWithNo,
+    myCategoryKeysWithNo,
+    insights: buildInsights(myResults, insightsPartner)
+  });
+});
+
+resultsRouter.get("/partner/:partnerUserId/follow-up", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const partnerId = String(req.params.partnerUserId || "");
+  if (!partnerId || partnerId === userId) {
+    res.status(400).json({ error: "BAD_REQUEST" });
+    return;
+  }
+
+  const coupleRows = await dbQuery(
+    "select id, user_a_id, user_b_id from couple where (user_a_id=? and user_b_id=?) or (user_a_id=? and user_b_id=?) limit 1",
+    [userId, partnerId, partnerId, userId]
+  );
+  const couple = coupleRows[0];
+  if (!couple) {
+    res.status(404).json({ error: "PARTNER_LINK_NOT_FOUND" });
+    return;
+  }
+
+  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+  const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
+  const me = meRows[0];
+  if (!me || !Boolean(me.completed)) {
+    res.status(409).json({ error: "TEST_NOT_COMPLETED" });
+    return;
+  }
+
+  const partnerRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [partnerId]);
+  const partner = partnerRows[0];
+  if (!partner || !Boolean(partner.completed)) {
+    res.status(409).json({ error: "PARTNER_TEST_NOT_COMPLETED" });
+    return;
+  }
+
+  const meAnswers = parseAnswersField(me.answers);
+  const partnerAnswers = parseAnswersField(partner.answers);
+  const [myPriority, partnerPriority] = await Promise.all([loadPriorityForUser(userId), loadPriorityForUser(partnerId)]);
+  const myResults = computeUserResults(questions, meAnswers, myPriority.weightsByKey);
+  const partnerResults = computeUserResults(questions, partnerAnswers, partnerPriority.weightsByKey);
+  myResults.priorityOrder = myPriority.order;
+  partnerResults.priorityOrder = partnerPriority.order;
+
+  const partnerUserRows = await dbQuery(
+    "select coalesce(nullif(trim(display_name),''), username, email) as label from app_user where id=? limit 1",
+    [partnerId]
+  );
+  const partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
+
+  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+  const myCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, meAnswers);
+  const partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
+
+  const plan = buildFollowUpPlan({
+    partnerLabel,
+    myResults,
+    partnerResults
+  });
+
+  res.json({
+    coupleId: couple.id,
+    partnerUserId: partnerId,
+    partnerLabel,
+    partnerMainTestNos,
+    partnerCategoryKeysWithNo,
+    myCategoryKeysWithNo,
+    ...plan
   });
 });
 
@@ -125,7 +287,6 @@ function buildInsights(me, partner) {
   });
 
   const lows = [...combined]
-    .filter((c) => c.key !== "fisico")
     .sort((a, b) => a.score - b.score)
     .slice(0, 2);
 
@@ -139,4 +300,38 @@ function buildInsights(me, partner) {
   return { topDiffs, lows, followUps, tips };
 }
 
-module.exports = { resultsRouter };
+async function getCategoryDetailHandler(req, res) {
+  const userId = req.userId;
+  const categoryKey = String(req.params.categoryKey || req.query.key || "").trim();
+  const cat = categories.find((c) => c.key === categoryKey);
+  if (!categoryKey) {
+    res.status(400).json({ error: "BAD_REQUEST" });
+    return;
+  }
+  if (!cat) {
+    res.status(400).json({ error: "UNKNOWN_CATEGORY" });
+    return;
+  }
+
+  const questions = await dbQuery(
+    "select id, category_key, text from test_question order by category_order asc, question_order asc"
+  );
+
+  const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
+  const me = meRows[0];
+  if (!me || !Boolean(me.completed)) {
+    res.status(409).json({ error: "TEST_NOT_COMPLETED" });
+    return;
+  }
+
+  const meAnswers = parseAnswersField(me.answers);
+  const myPriority = await loadPriorityForUser(userId);
+  const myResults = computeUserResults(questions, meAnswers, myPriority.weightsByKey);
+  const row = myResults.byCategory.find((c) => c.key === categoryKey);
+  const weight = row?.weight ?? cat.weight;
+  const qs = questions.filter((q) => q.category_key === categoryKey);
+  const detail = buildCategoryDetailReport(categoryKey, cat.label, weight, qs, meAnswers);
+  res.json(detail);
+}
+
+module.exports = { resultsRouter, getCategoryDetailHandler };
