@@ -145,11 +145,16 @@ authRouter.get("/check-username", async (req, res) => {
     res.json({ available: false, reason: "USERNAME_INVALID" });
     return;
   }
-  const rows = await dbQuery(
-    "select 1 as found from app_user where lower(username)=? limit 1",
-    [raw]
-  );
-  res.json({ available: rows.length === 0 });
+  try {
+    const rows = await dbQuery(
+      "select 1 as found from app_user where lower(username)=? limit 1",
+      [raw]
+    );
+    res.json({ available: rows.length === 0 });
+  } catch (e) {
+    process.stderr.write(`[check-username] ${e?.message ?? e}\n`);
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
 });
 
 authRouter.post("/me/onboarding", requireAuth, async (req, res) => {

@@ -10,6 +10,9 @@ const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
+const { ensureRuntimeSchema } = require("../scripts/schemaEnsure");
+ensureRuntimeSchema(db);
+
 function isReadQuery(sql) {
   const s = String(sql).trim().toLowerCase();
   return s.startsWith("select") || s.startsWith("pragma") || s.startsWith("with");

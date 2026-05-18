@@ -11,7 +11,7 @@ const { linkedRouter } = require("./routes/linked");
 const { usersRouter } = require("./routes/users");
 
 /** Cambia al desplegar para verificar que Render sirve la build nueva. */
-const API_VERSION = "2025.05.18-onboarding";
+const API_VERSION = "2025.05.18-schema-startup";
 
 const LAN_ORIGIN_RE = /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
 const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
