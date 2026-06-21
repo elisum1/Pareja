@@ -5,6 +5,7 @@ const { dbQuery } = require("../db");
 const { env } = require("../env");
 const { requireAuth } = require("../auth/middleware");
 const { sendWhatsAppInvite } = require("../services/whatsapp");
+const { notifyInviteReceived, notifyInviteAccepted } = require("../domain/notifications");
 
 const invitesRouter = express.Router();
 
@@ -189,6 +190,19 @@ invitesRouter.post("/", requireAuth, async (req, res) => {
     }
   }
 
+  if (resolvedTargetUserId) {
+    try {
+      await notifyInviteReceived({
+        targetUserId: resolvedTargetUserId,
+        inviterUserId: userId,
+        inviteId,
+        inviteToken: token
+      });
+    } catch (e) {
+      console.log("[invites] notifyInviteReceived failed:", e?.message || e);
+    }
+  }
+
   res.json({
     invite: {
       id: inviteId,
@@ -298,6 +312,17 @@ invitesRouter.post("/:token/accept", requireAuth, async (req, res) => {
   const coupleId = randomUUID();
   await dbQuery("insert into couple (id, user_a_id, user_b_id) values (?, ?, ?)", [coupleId, inv.inviter_user_id, userId]);
   await dbQuery("update invite set status='accepted', accepted_user_id=? where id=?", [userId, inv.id]);
+
+  try {
+    await notifyInviteAccepted({
+      inviterUserId: inv.inviter_user_id,
+      acceptedUserId: userId,
+      coupleId,
+      inviteId: inv.id
+    });
+  } catch (e) {
+    console.log("[invites] notifyInviteAccepted failed:", e?.message || e);
+  }
 
   res.json({ couple: { id: coupleId, userAId: inv.inviter_user_id, userBId: userId } });
 });

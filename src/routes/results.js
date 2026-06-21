@@ -9,6 +9,7 @@ const {
   buildMainTestNoInsightBlocks,
   categoryKeysWithMainTestNo
 } = require("../domain/partnerFollowUp");
+const { buildCoachContext, handleCoachMessage } = require("../domain/coupleCoachChat");
 const { parseAnswersField } = require("../domain/coupleTestAnswers");
 
 const resultsRouter = express.Router();
@@ -16,7 +17,9 @@ const resultsRouter = express.Router();
 resultsRouter.get("/", requireAuth, async (req, res) => {
   const userId = req.userId;
 
-  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+  const questions = await dbQuery(
+    "select id, category_key, question_order, text from test_question order by category_order asc, question_order asc"
+  );
 
   const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
   const me = meRows[0];
@@ -63,7 +66,10 @@ resultsRouter.get("/", requireAuth, async (req, res) => {
     [partnerId]
   );
   const partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
-  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel, {
+    authorResults: partnerResults,
+    partnerResults: myResults
+  });
   const partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
   const myCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, meAnswers);
 
@@ -95,7 +101,9 @@ resultsRouter.get("/partner/:partnerUserId", requireAuth, async (req, res) => {
     return;
   }
 
-  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+  const questions = await dbQuery(
+    "select id, category_key, question_order, text from test_question order by category_order asc, question_order asc"
+  );
 
   const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
   const me = meRows[0];
@@ -137,7 +145,10 @@ resultsRouter.get("/partner/:partnerUserId", requireAuth, async (req, res) => {
       [partnerId]
     );
     partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
-    partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+    partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel, {
+      authorResults: partnerPayload.results,
+      partnerResults: myResults
+    });
     partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
   }
 
@@ -170,7 +181,9 @@ resultsRouter.get("/partner/:partnerUserId/follow-up", requireAuth, async (req, 
     return;
   }
 
-  const questions = await dbQuery("select id, category_key, text from test_question order by category_order asc, question_order asc");
+  const questions = await dbQuery(
+    "select id, category_key, question_order, text from test_question order by category_order asc, question_order asc"
+  );
   const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
   const me = meRows[0];
   if (!me || !Boolean(me.completed)) {
@@ -199,14 +212,19 @@ resultsRouter.get("/partner/:partnerUserId/follow-up", requireAuth, async (req, 
   );
   const partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
 
-  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel);
+  const partnerMainTestNos = buildMainTestNoInsightBlocks(questions, partnerAnswers, partnerLabel, {
+    authorResults: partnerResults,
+    partnerResults: myResults
+  });
   const myCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, meAnswers);
   const partnerCategoryKeysWithNo = categoryKeysWithMainTestNo(questions, partnerAnswers);
 
   const plan = buildFollowUpPlan({
     partnerLabel,
     myResults,
-    partnerResults
+    partnerResults,
+    userIdA: userId,
+    userIdB: partnerId
   });
 
   res.json({
@@ -217,6 +235,79 @@ resultsRouter.get("/partner/:partnerUserId/follow-up", requireAuth, async (req, 
     partnerCategoryKeysWithNo,
     myCategoryKeysWithNo,
     ...plan
+  });
+});
+
+resultsRouter.post("/partner/:partnerUserId/coach-chat", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const partnerId = String(req.params.partnerUserId || "");
+  const message = String(req.body?.message || "").trim();
+  if (!partnerId || partnerId === userId) {
+    res.status(400).json({ error: "BAD_REQUEST" });
+    return;
+  }
+  if (!message || message.length > 2000) {
+    res.status(400).json({ error: "BAD_REQUEST" });
+    return;
+  }
+
+  const coupleRows = await dbQuery(
+    "select id from couple where (user_a_id=? and user_b_id=?) or (user_a_id=? and user_b_id=?) limit 1",
+    [userId, partnerId, partnerId, userId]
+  );
+  if (!coupleRows[0]) {
+    res.status(404).json({ error: "PARTNER_LINK_NOT_FOUND" });
+    return;
+  }
+
+  const questions = await dbQuery(
+    "select id, category_key, question_order, text from test_question order by category_order asc, question_order asc"
+  );
+  const meRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [userId]);
+  const partnerRows = await dbQuery("select answers, completed from test_response where user_id=? limit 1", [partnerId]);
+  if (!meRows[0]?.completed || !partnerRows[0]?.completed) {
+    res.status(409).json({ error: "BOTH_TESTS_REQUIRED" });
+    return;
+  }
+
+  const meAnswers = parseAnswersField(meRows[0].answers);
+  const partnerAnswers = parseAnswersField(partnerRows[0].answers);
+  const [myPriority, partnerPriority] = await Promise.all([loadPriorityForUser(userId), loadPriorityForUser(partnerId)]);
+  const myResults = computeUserResults(questions, meAnswers, myPriority.weightsByKey);
+  const partnerResults = computeUserResults(questions, partnerAnswers, partnerPriority.weightsByKey);
+
+  const partnerUserRows = await dbQuery(
+    "select coalesce(nullif(trim(display_name),''), username, email) as label from app_user where id=? limit 1",
+    [partnerId]
+  );
+  const partnerLabel = String(partnerUserRows[0]?.label || "Tu pareja").trim() || "Tu pareja";
+
+  const ctx = buildCoachContext({
+    myResults,
+    partnerResults,
+    partnerLabel,
+    userIdA: userId,
+    userIdB: partnerId,
+    questions,
+    meAnswers,
+    partnerAnswers
+  });
+
+  const history = Array.isArray(req.body?.history)
+    ? req.body.history
+        .filter((h) => h && (h.role === "user" || h.role === "coach") && String(h.text || "").trim())
+        .slice(-10)
+        .map((h) => ({ role: h.role, text: String(h.text).trim() }))
+    : [];
+
+  const { reply, suggestedPrompts, intent, contextSummary } = handleCoachMessage(message, ctx, history);
+
+  res.json({
+    reply,
+    suggestedPrompts,
+    intent,
+    partnerLabel,
+    contextSummary
   });
 });
 
@@ -295,7 +386,10 @@ function buildInsights(me, partner) {
     return qs.map((q) => ({ categoryKey: c.key, categoryLabel: c.label, question: q }));
   });
 
-  const tips = combined.flatMap((c) => tipsForCategory(c.key, c.score).map((t) => ({ categoryKey: c.key, tip: t })));
+  const tips = combined.flatMap((c) => {
+    const seedPair = partner ? { a: "me", b: "partner" } : null;
+    return tipsForCategory(c.key, c.score, seedPair).map((t) => ({ categoryKey: c.key, tip: t }));
+  });
 
   return { topDiffs, lows, followUps, tips };
 }

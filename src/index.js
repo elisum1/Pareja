@@ -9,9 +9,10 @@ const { requireAuth } = require("./auth/middleware");
 const { resultsRouter, getCategoryDetailHandler } = require("./routes/results");
 const { linkedRouter } = require("./routes/linked");
 const { usersRouter } = require("./routes/users");
+const { notificationsRouter } = require("./routes/notifications");
 
 /** Cambia al desplegar para verificar que Render sirve la build nueva. */
-const API_VERSION = "2025.05.18-schema-startup";
+const API_VERSION = "2026.06.20-coach-notifications-v8";
 
 const LAN_ORIGIN_RE = /^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
 const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
@@ -96,6 +97,7 @@ function createApp() {
   app.get("/results/category-detail", requireAuth, getCategoryDetailHandler);
   app.use("/results", resultsRouter);
   app.use("/linked", linkedRouter);
+  app.use("/notifications", notificationsRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: "NOT_FOUND" });

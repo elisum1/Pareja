@@ -1,5 +1,4 @@
--- Actualización test pareja (Evaluador de Relaciones Excel v3): 10 categorías, 47 preguntas.
--- Borra respuestas porque los id de preguntas y el mapa de categorías cambian.
+-- Corrección: re-aplica el banco de preguntas v8 (45 preguntas, comunicación sin expectativas financieras).
 delete from test_response;
 delete from test_question;
 delete from sqlite_sequence where name = 'test_question';
@@ -29,11 +28,10 @@ insert into test_question (category_key, category_order, question_order, text) v
 ('comunicacion',5,1,'¿Sientes que te escucha con atención cuando le hablas?'),
 ('comunicacion',5,2,'¿Puedes expresarle tus emociones sin miedo a reacciones negativas o burlas?'),
 ('comunicacion',5,3,'¿Pueden hablar de desacuerdos sin que la conversación se convierta en una discusión fuerte?'),
-('comunicacion',5,4,'¿En su relación se habla sobre expectativas financieras, emocionales o familiares de manera abierta y periódica?'),
-('comunicacion',5,5,'¿Al momento de comunicarse por lo general llegan a un acuerdo común?'),
-('comunicacion',5,6,'¿Le comunicas a tu pareja tus problemas antes que a otra persona?'),
-('comunicacion',5,7,'¿Le comunicas a tu pareja tus alegrías o éxitos antes que a otra persona?'),
-('comunicacion',5,8,'¿Le comunicas a tu pareja tus tristezas antes que a otra persona?'),
+('comunicacion',5,4,'¿Al momento de comunicarse por lo general llegan a un acuerdo común?'),
+('comunicacion',5,5,'¿Le comunicas a tu pareja tus problemas antes que a otra persona?'),
+('comunicacion',5,6,'¿Le comunicas a tu pareja tus alegrías o éxitos antes que a otra persona?'),
+('comunicacion',5,7,'¿Le comunicas a tu pareja tus tristezas antes que a otra persona?'),
 ('diversion',6,1,'¿Crees que mensualmente son suficientes las actividades recreativas con tu pareja?'),
 ('diversion',6,2,'¿Estás satisfecho (a) con las actividades recreativas que te propone?'),
 ('diversion',6,3,'¿Al momento de divertirse lo pueden hacer ustedes solos como pareja?'),
@@ -50,7 +48,6 @@ insert into test_question (category_key, category_order, question_order, text) v
 ('cuidado_personal',9,1,'¿Te sientes cómodo (a) con la manera en que tu pareja maneja el consumo de sustancias nocivas para la salud (drogas, alcohol, tabaco)?'),
 ('cuidado_personal',9,2,'¿Su estilo de vida (alimentación, sueño, ejercicio) contribuye positivamente a la relación?'),
 ('cuidado_personal',9,3,'¿Mantiene una higiene y apariencia personal que te parece adecuada?'),
-('organizacion',10,1,'¿Cumple de forma equilibrada con las responsabilidades o quehaceres del hogar?'),
-('organizacion',10,2,'¿Es organizada con su vida diaria?');
+('organizacion',10,1,'¿Es organizada con su vida diaria?');
 
 delete from user_priority;

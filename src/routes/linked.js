@@ -5,6 +5,7 @@ const { dbQuery } = require("../db");
 const { requireAuth } = require("../auth/middleware");
 const { categories, computeUserResults, computeWeightsFromOrder, tipsForCategory } = require("../domain/testModel");
 const { parseAnswersField } = require("../domain/coupleTestAnswers");
+const { formatCoupleCompatibilitySummary } = require("../domain/coupleCompatibilityBands");
 
 const linkedRouter = express.Router();
 
@@ -210,7 +211,7 @@ function summarizeComparison(mainComparison) {
   let shortText =
     mainComparison?.bothCompleted
       ? compatibilityPct !== null
-        ? `Su compatibilidad general es cercana al ${compatibilityPct}%.`
+        ? formatCoupleCompatibilitySummary(compatibilityPct)
         : "Ya ambos tienen resultado del test principal."
       : mainComparison?.meCompleted && !mainComparison?.partnerCompleted
         ? "Tu pareja aún debe completar el test principal para ver el comparativo completo."

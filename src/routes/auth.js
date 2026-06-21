@@ -145,10 +145,25 @@ authRouter.get("/check-username", async (req, res) => {
     res.json({ available: false, reason: "USERNAME_INVALID" });
     return;
   }
+
+  let currentUserId = null;
+  const header = req.header("authorization");
+  if (header?.startsWith("Bearer ")) {
+    try {
+      const { verifyJwt } = require("../auth/jwt");
+      const payload = verifyJwt(header.slice("Bearer ".length));
+      currentUserId = payload.userId;
+    } catch {
+      currentUserId = null;
+    }
+  }
+
   try {
     const rows = await dbQuery(
-      "select 1 as found from app_user where lower(username)=? limit 1",
-      [raw]
+      currentUserId
+        ? "select 1 as found from app_user where lower(username)=? and id<>? limit 1"
+        : "select 1 as found from app_user where lower(username)=? limit 1",
+      currentUserId ? [raw, currentUserId] : [raw]
     );
     res.json({ available: rows.length === 0 });
   } catch (e) {

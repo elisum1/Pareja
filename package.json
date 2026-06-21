@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "build": "npm run db:migrate && node scripts/ensureBuildDir.js",
-    "dev": "node src/index.js",
+    "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "db:migrate": "node scripts/migrate.js",
     "smoke": "node scripts/smoke.js"

@@ -6,6 +6,8 @@ const { requireAuth } = require("../auth/middleware");
 const { categories, computeWeightsFromOrder } = require("../domain/testModel");
 const { normalizeAnswersForPersist } = require("../domain/coupleTestAnswers");
 const { relationTests, getRelationTest, computeRelationResult } = require("../domain/relationTestModel");
+const { COMPARE_CATEGORY_KEYS, computeCompareResults } = require("../domain/compareTestModel");
+const { notifyPartnersTestChange } = require("../domain/notifications");
 
 const testRouter = express.Router();
 
@@ -109,12 +111,21 @@ testRouter.post("/submit", requireAuth, async (req, res) => {
   const completed = total > 0;
   const completedInt = completed ? 1 : 0;
 
-  const existing = await dbQuery("select id from test_response where user_id=? limit 1", [userId]);
+  const existing = await dbQuery("select id, completed from test_response where user_id=? limit 1", [userId]);
+  const wasCompleted = Boolean(existing[0]?.completed);
+
   if (existing[0]) {
     await dbQuery(
       "update test_response set answers=?, completed=?, completed_at=case when ? then strftime('%Y-%m-%dT%H:%M:%fZ','now') else null end, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
       [JSON.stringify(normalizedAnswers), completedInt, completedInt, existing[0].id]
     );
+    if (completed) {
+      try {
+        await notifyPartnersTestChange({ userId, isUpdate: wasCompleted });
+      } catch (e) {
+        console.log("[test] notifyPartnersTestChange failed:", e?.message || e);
+      }
+    }
     res.json({ response: { id: existing[0].id, completed, answered, total } });
     return;
   }
@@ -124,6 +135,13 @@ testRouter.post("/submit", requireAuth, async (req, res) => {
     "insert into test_response (id, user_id, answers, completed, completed_at, updated_at) values (?, ?, ?, ?, case when ? then strftime('%Y-%m-%dT%H:%M:%fZ','now') else null end, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
     [responseId, userId, JSON.stringify(normalizedAnswers), completedInt, completedInt]
   );
+  if (completed) {
+    try {
+      await notifyPartnersTestChange({ userId, isUpdate: false });
+    } catch (e) {
+      console.log("[test] notifyPartnersTestChange failed:", e?.message || e);
+    }
+  }
   res.json({ response: { id: responseId, completed, answered, total } });
 });
 
@@ -235,6 +253,73 @@ testRouter.post("/relation/:testType/submit", requireAuth, async (req, res) => {
     ]
   );
   res.json({ result: { id, testType, completed, answered, total, score: computed?.score ?? 0 } });
+});
+
+const comparePersonSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  avatarId: z.string().trim().max(40).optional()
+});
+
+const compareSubmitSchema = z.object({
+  personA: comparePersonSchema,
+  personB: comparePersonSchema,
+  order: z.array(z.string()),
+  ratingsA: z.record(z.string(), z.number()),
+  ratingsB: z.record(z.string(), z.number())
+});
+
+testRouter.post("/compare/submit", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const parsed = compareSubmitSchema.safeParse(req.body?.payload ?? req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "BAD_REQUEST", details: parsed.error.flatten() });
+    return;
+  }
+
+  const order = parsed.data.order.map(String);
+  const unique = new Set(order);
+  if (order.length !== COMPARE_CATEGORY_KEYS.length || unique.size !== order.length) {
+    res.status(400).json({ error: "INVALID_ORDER" });
+    return;
+  }
+  if (!COMPARE_CATEGORY_KEYS.every((k) => unique.has(k))) {
+    res.status(400).json({ error: "INVALID_ORDER" });
+    return;
+  }
+
+  for (const key of COMPARE_CATEGORY_KEYS) {
+    const a = Number(parsed.data.ratingsA[key]);
+    const b = Number(parsed.data.ratingsB[key]);
+    if (!Number.isFinite(a) || a < 1 || a > 5 || !Number.isFinite(b) || b < 1 || b > 5) {
+      res.status(400).json({ error: "INVALID_RATINGS", key });
+      return;
+    }
+  }
+
+  const computed = computeCompareResults(order, parsed.data.ratingsA, parsed.data.ratingsB);
+  const id = crypto.randomUUID();
+  await dbQuery(
+    `insert into comparison_test_result (
+      id, user_id, person_a_name, person_a_avatar, person_b_name, person_b_avatar,
+      priority_order, ratings_a, ratings_b, result_json, score_a, score_b, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+    [
+      id,
+      userId,
+      parsed.data.personA.name,
+      parsed.data.personA.avatarId ?? null,
+      parsed.data.personB.name,
+      parsed.data.personB.avatarId ?? null,
+      JSON.stringify(order),
+      JSON.stringify(parsed.data.ratingsA),
+      JSON.stringify(parsed.data.ratingsB),
+      JSON.stringify(computed),
+      computed.totalA,
+      computed.totalB
+    ]
+  );
+
+  res.json({ ok: true, id, result: computed });
 });
 
 module.exports = { testRouter };

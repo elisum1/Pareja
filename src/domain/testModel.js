@@ -1,19 +1,19 @@
 /**
- * Test pareja — Evaluador de Relaciones (v2).
- * 10 categorías, sin "Físico". Ponderación por orden de prioridad: 19% … 5% (PDF).
+ * Test pareja — Evaluador de Relaciones (Excel CUESTIONARIO v8).
+ * 10 categorías, sin "Físico". 45 preguntas. Ponderación por prioridad: 19% … 5%.
  */
 const { getBinaryAnswer } = require("./coupleTestAnswers");
 const categories = [
-  { key: "eco", label: "Estabilidad económica", weight: 0.19, maxYes: 5 },
+  { key: "eco", label: "Estabilidad financiera", weight: 0.19, maxYes: 5 },
   { key: "respeto", label: "Respeto", weight: 0.13, maxYes: 5 },
-  { key: "tolerancia", label: "Tolerancia (aceptación y flexibilidad)", weight: 0.12, maxYes: 6 },
+  { key: "tolerancia", label: "Tolerancia", weight: 0.12, maxYes: 5 },
   { key: "confianza", label: "Confianza", weight: 0.11, maxYes: 6 },
-  { key: "comunicacion", label: "Comunicación", weight: 0.1, maxYes: 8 },
+  { key: "comunicacion", label: "Comunicación", weight: 0.1, maxYes: 7 },
   { key: "diversion", label: "Diversión", weight: 0.09, maxYes: 4 },
   { key: "intimidad", label: "Intimidad", weight: 0.08, maxYes: 5 },
-  { key: "convivencia_social", label: "Convivencia social", weight: 0.07, maxYes: 4 },
-  { key: "cuidado_personal", label: "Cuidado personal", weight: 0.06, maxYes: 4 },
-  { key: "organizacion", label: "Organización", weight: 0.05, maxYes: 2 }
+  { key: "convivencia_social", label: "Convivencia social", weight: 0.07, maxYes: 5 },
+  { key: "cuidado_personal", label: "Cuidado personal", weight: 0.06, maxYes: 3 },
+  { key: "organizacion", label: "Organización", weight: 0.05, maxYes: 1 }
 ];
 
 const TOTAL_QUESTIONS = categories.reduce((a, c) => a + c.maxYes, 0);
@@ -108,23 +108,9 @@ const extraQuestionsByCategory = {
   ]
 };
 
-function tipsForCategory(_key, score) {
-  if (score >= 0.7) {
-    return [
-      "Mantengan la constancia: lo que ya funciona es su superpoder.",
-      "Hagan una mini-revisión semanal: 10 minutos para ajustar sin drama."
-    ];
-  }
-  if (score >= 0.4) {
-    return [
-      "Elijan un cambio pequeño y medible para esta semana.",
-      "Acordar una regla simple suele vencer a discutir una teoría."
-    ];
-  }
-  return [
-    "Pongan un límite claro: sin respeto no hay negociación.",
-    "Busquen una conversación guiada: preguntas cortas, turnos, sin interrupciones."
-  ];
+function tipsForCategory(key, score, seedPair = null) {
+  const { tipsForCategoryRich } = require("./coupleRecommendationEngine");
+  return tipsForCategoryRich(key, score, seedPair);
 }
 
 module.exports = { categories, computeWeightsFromOrder, computeUserResults, extraQuestionsByCategory, tipsForCategory };

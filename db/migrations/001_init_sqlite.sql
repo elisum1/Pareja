@@ -89,14 +89,14 @@ create table if not exists couple_task (
   completed_at text
 );
 
-/* Evaluador de Relaciones (v2): 10 categorías, 49 preguntas, sin categoría Físico */
+/* Evaluador de Relaciones (Excel CUESTIONARIO): 10 categorías, 47 preguntas, sin categoría Físico */
 insert into test_question (category_key, category_order, question_order, text) values
 ('eco',1,1,'¿Tu pareja es responsable en el manejo de su dinero?'),
 ('eco',1,2,'¿Cumple el acuerdo financiero que han establecido juntos?'),
 ('eco',1,3,'¿Es transparente contigo respecto a sus ingresos, gastos, inversiones y/o deudas?'),
 ('eco',1,4,'¿Sientes que maneja el dinero de forma justa para ambos?'),
 ('eco',1,5,'¿Pueden hablar de dinero sin que esto genere tensión innecesaria?'),
-('respeto',2,1,'¿Te habla con respeto en la vida diaria?'),
+('respeto',2,1,'¿Sientes admiración por tu pareja? ¿Eres su Fan?'),
 ('respeto',2,2,'Cuando discuten, ¿tu pareja evita insultos, gritos o descalificaciones personales?'),
 ('respeto',2,3,'¿Respeta tus opiniones, decisiones y límites personales?'),
 ('respeto',2,4,'¿Evita conductas que te hieran emocionalmente (burlas, humillación, manipulación)?'),
@@ -104,9 +104,8 @@ insert into test_question (category_key, category_order, question_order, text) v
 ('tolerancia',3,1,'¿Es tolerante con tus creencias religiosas?'),
 ('tolerancia',3,2,'¿Es tolerante con tus gustos personales (deportes, música, hobbies, etc.) sin intentar cambiarlos?'),
 ('tolerancia',3,3,'¿Acepta tus hábitos cotidianos (rutinas, horarios, modo de hacer las cosas)?'),
-('tolerancia',3,4,'¿Toleras su forma de hablar?'),
-('tolerancia',3,5,'¿Toleras sus modales al comer?'),
-('tolerancia',3,6,'¿Toleras su forma de dormir?'),
+('tolerancia',3,4,'¿Toleras sus modales al comer?'),
+('tolerancia',3,5,'¿Toleras su forma de dormir?'),
 ('confianza',4,1,'¿Sientes la libertad de conversar por teléfono con quien necesites sin sentirte vigilado (a) y obligado (a) a justificarlo?'),
 ('confianza',4,2,'¿Puedes hablar con cualquier persona sin que tu pareja te haga luego celos molestos?'),
 ('confianza',4,3,'¿Puedes asistir a ciertos eventos o lugares sin que tu pareja te haga luego algún reclamo?'),
@@ -134,10 +133,9 @@ insert into test_question (category_key, category_order, question_order, text) v
 ('convivencia_social',8,2,'¿Consideras que la manera en que se relaciona socialmente con tus amistades, encaja bien contigo?'),
 ('convivencia_social',8,3,'¿Respeta tu tiempo con familiares y amistades?'),
 ('convivencia_social',8,4,'¿Te acompaña cuando es importante para ti hacerlo en eventos sociales?'),
-('cuidado_personal',9,1,'¿Evita sustancias (drogas, alcohol, tabaco) que puedan afectar su salud o la estabilidad de la relación?'),
+('cuidado_personal',9,1,'¿Te sientes cómodo (a) con la manera en que tu pareja maneja el consumo de sustancias nocivas para la salud (drogas, alcohol, tabaco)?'),
 ('cuidado_personal',9,2,'¿Su estilo de vida (alimentación, sueño, ejercicio) contribuye positivamente a la relación?'),
-('cuidado_personal',9,3,'¿Cuida su salud de manera preventiva (chequeos, descanso, límites)?'),
-('cuidado_personal',9,4,'¿Mantiene una higiene y apariencia personal que te parece adecuada?'),
+('cuidado_personal',9,3,'¿Mantiene una higiene y apariencia personal que te parece adecuada?'),
 ('organizacion',10,1,'¿Cumple de forma equilibrada con las responsabilidades o quehaceres del hogar?'),
 ('organizacion',10,2,'¿Es organizada con su vida diaria?')
 on conflict(category_key, question_order) do update set
