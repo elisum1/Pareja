@@ -163,63 +163,55 @@ function loadQuestionsFromSpreadsheet(filePath, sheetName) {
   return finalQuestions;
 }
 
+const { ensureAppUserProfileColumns, ensureInviteColumns, ensureComparisonTestTable } = require("./schemaEnsure");
+
+function readMigrationFiles() {
+  const migrationsDir = path.join(__dirname, "..", "db", "migrations");
+  const read = (name) => {
+    const filePath = path.join(migrationsDir, name);
+    return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+  };
+  return {
+    init: read("001_init_sqlite.sql"),
+    coupleTestV2: read("002_reseed_couple_test_v2.sql"),
+    coupleTestExcelV3: read("003_reseed_couple_test_excel_v3.sql"),
+    coupleTestExcelV7: read("004_reseed_couple_test_excel_v7.sql"),
+    coupleTestExcelV8: read("005_reseed_couple_test_excel_v8.sql"),
+    coupleTestExcelV8Fix: read("006_reseed_couple_test_excel_v8_fix.sql"),
+    coupleTestConvivenciaHogar: read("007_restore_convivencia_hogar.sql")
+  };
+}
+
+function applyNamedMigration(db, name, sql) {
+  if (!sql) return;
+  const applied = db.prepare("select 1 as ok from _app_migrations where name = ?").get(name);
+  if (applied?.ok) return;
+  db.exec(sql);
+  db.prepare("insert into _app_migrations (name) values (?)").run(name);
+}
+
+/** Aplica migraciones SQL en la instancia SQLite abierta (idempotente). */
+function applyMigrations(db) {
+  const files = readMigrationFiles();
+  db.exec(files.init);
+  applyNamedMigration(db, "couple_test_v2", files.coupleTestV2);
+  applyNamedMigration(db, "couple_test_excel_v3", files.coupleTestExcelV3);
+  applyNamedMigration(db, "couple_test_excel_v7", files.coupleTestExcelV7);
+  applyNamedMigration(db, "couple_test_excel_v8", files.coupleTestExcelV8);
+  applyNamedMigration(db, "couple_test_excel_v8_fix", files.coupleTestExcelV8Fix);
+  applyNamedMigration(db, "couple_test_convivencia_hogar", files.coupleTestConvivenciaHogar);
+  ensureAppUserProfileColumns(db);
+  ensureInviteColumns(db);
+  ensureComparisonTestTable(db);
+}
+
 async function main() {
-  const sqlPath = path.join(__dirname, "..", "db", "migrations", "001_init_sqlite.sql");
-  const sql = fs.readFileSync(sqlPath, "utf8");
-
-  const sql002Path = path.join(__dirname, "..", "db", "migrations", "002_reseed_couple_test_v2.sql");
-  const sql002 = fs.existsSync(sql002Path) ? fs.readFileSync(sql002Path, "utf8") : "";
-  const sql003Path = path.join(__dirname, "..", "db", "migrations", "003_reseed_couple_test_excel_v3.sql");
-  const sql003 = fs.existsSync(sql003Path) ? fs.readFileSync(sql003Path, "utf8") : "";
-
-  const sql004Path = path.join(__dirname, "..", "db", "migrations", "004_reseed_couple_test_excel_v7.sql");
-  const sql004 = fs.existsSync(sql004Path) ? fs.readFileSync(sql004Path, "utf8") : "";
-  const sql005Path = path.join(__dirname, "..", "db", "migrations", "005_reseed_couple_test_excel_v8.sql");
-  const sql005 = fs.existsSync(sql005Path) ? fs.readFileSync(sql005Path, "utf8") : "";
-  const sql006Path = path.join(__dirname, "..", "db", "migrations", "006_reseed_couple_test_excel_v8_fix.sql");
-  const sql006 = fs.existsSync(sql006Path) ? fs.readFileSync(sql006Path, "utf8") : "";
-  const sql007Path = path.join(__dirname, "..", "db", "migrations", "007_restore_convivencia_hogar.sql");
-  const sql007 = fs.existsSync(sql007Path) ? fs.readFileSync(sql007Path, "utf8") : "";
-
   const dbPath = path.isAbsolute(env.SQLITE_PATH) ? env.SQLITE_PATH : path.join(__dirname, "..", env.SQLITE_PATH);
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   const db = new Database(dbPath);
   try {
-    db.exec(sql);
-    const applied002 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_v2");
-    if (!applied002?.ok && sql002) {
-      db.exec(sql002);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_v2");
-    }
-    const applied003 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_excel_v3");
-    if (!applied003?.ok && sql003) {
-      db.exec(sql003);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_excel_v3");
-    }
-    const applied004 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_excel_v7");
-    if (!applied004?.ok && sql004) {
-      db.exec(sql004);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_excel_v7");
-    }
-    const applied005 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_excel_v8");
-    if (!applied005?.ok && sql005) {
-      db.exec(sql005);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_excel_v8");
-    }
-    const applied006 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_excel_v8_fix");
-    if (!applied006?.ok && sql006) {
-      db.exec(sql006);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_excel_v8_fix");
-    }
-    const applied007 = db.prepare("select 1 as ok from _app_migrations where name = ?").get("couple_test_convivencia_hogar");
-    if (!applied007?.ok && sql007) {
-      db.exec(sql007);
-      db.prepare("insert into _app_migrations (name) values (?)").run("couple_test_convivencia_hogar");
-    }
-    ensureAppUserProfileColumns(db);
-    ensureInviteColumns(db);
-    ensureComparisonTestTable(db);
+    applyMigrations(db);
     const args = process.argv.slice(2);
     const questionsPathArgIndex = args.findIndex((a) => a === "--questions" || a === "--preguntas");
     const questionsPathFromArg = questionsPathArgIndex >= 0 ? args[questionsPathArgIndex + 1] : null;
@@ -253,9 +245,11 @@ async function main() {
   }
 }
 
-const { ensureAppUserProfileColumns, ensureInviteColumns, ensureComparisonTestTable } = require("./schemaEnsure");
+module.exports = { applyMigrations };
 
-main().catch((e) => {
-  process.stderr.write(`${e?.message ?? e}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    process.stderr.write(`${e?.message ?? e}\n`);
+    process.exit(1);
+  });
+}

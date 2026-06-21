@@ -1,5 +1,13 @@
+function tableExists(db, tableName) {
+  const row = db
+    .prepare("select 1 as ok from sqlite_master where type = 'table' and name = ?")
+    .get(tableName);
+  return Boolean(row?.ok);
+}
+
 /** Parches de esquema en caliente (Render: la DB de runtime no es la del build). */
 function ensureAppUserProfileColumns(db) {
+  if (!tableExists(db, "app_user")) return;
   const cols = db.prepare("pragma table_info(app_user)").all();
   const names = new Set(cols.map((c) => String(c.name || "").toLowerCase()));
   if (!names.has("display_name")) {
@@ -32,6 +40,7 @@ function ensureAppUserProfileColumns(db) {
 }
 
 function ensureInviteColumns(db) {
+  if (!tableExists(db, "invite")) return;
   const cols = db.prepare("pragma table_info(invite)").all();
   const names = new Set(cols.map((c) => String(c.name || "").toLowerCase()));
   if (!names.has("target_user_id")) {
@@ -41,6 +50,7 @@ function ensureInviteColumns(db) {
 }
 
 function ensureComparisonTestTable(db) {
+  if (!tableExists(db, "app_user")) return;
   db.exec(`
     create table if not exists comparison_test_result (
       id text primary key,
@@ -63,6 +73,7 @@ function ensureComparisonTestTable(db) {
 }
 
 function ensureAppNotificationTable(db) {
+  if (!tableExists(db, "app_user")) return;
   db.exec(`
     create table if not exists app_notification (
       id text primary key,
