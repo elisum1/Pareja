@@ -15,8 +15,22 @@ const createInviteSchema = z.object({
   targetUserId: z.string().trim().min(1).max(64).optional()
 });
 
+function normalizeLinkBase(base) {
+  const value = String(base || "").trim();
+  if (!value) return "";
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function buildInviteDeepLink(token) {
+  const encoded = encodeURIComponent(String(token || ""));
+  return `${normalizeLinkBase(env.APP_LINK_BASE)}invite?token=${encoded}`;
+}
+
 function buildInviteLink(token) {
-  const deepLink = `${env.APP_LINK_BASE}invite?token=${token}`;
+  const deepLink = buildInviteDeepLink(token);
+  if (/expo\.dev\//i.test(env.APP_LINK_BASE)) {
+    return deepLink;
+  }
   const apiBase = String(env.API_BASE_URL || "").replace(/\/+$/, "");
   const apiLooksPublic = /^https?:\/\//i.test(apiBase) && !/localhost|127\.0\.0\.1/i.test(apiBase);
   return apiLooksPublic ? `${apiBase}/invites/open/${token}` : deepLink;
@@ -209,7 +223,7 @@ invitesRouter.post("/", requireAuth, async (req, res) => {
       token,
       phoneE164: phone || null,
       link,
-      deepLink: `${env.APP_LINK_BASE}invite?token=${token}`,
+      deepLink: buildInviteDeepLink(token),
       status: "pending",
       targetUserId: resolvedTargetUserId,
       targetUsername: resolvedTargetUsername
@@ -232,8 +246,7 @@ invitesRouter.get("/open/:token", async (req, res) => {
     return;
   }
 
-  const deepLink = `${env.APP_LINK_BASE}invite?token=${token}`;
-  res.redirect(302, deepLink);
+  res.redirect(302, buildInviteDeepLink(token));
 });
 
 invitesRouter.get("/:token", async (req, res) => {

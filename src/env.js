@@ -17,7 +17,11 @@ const envSchema = z.object({
   HOST: z.string().min(1).default("0.0.0.0"),
   SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
   JWT_SECRET: z.string().min(16),
-  APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
+  /** Deep link base: Expo Go → https://expo.dev/@owner/slug/--/ | APK → pareja-neon:// */
+  APP_LINK_BASE: z
+    .string()
+    .min(1)
+    .default("https://expo.dev/@elisum94/pareja-neon/--/"),
   API_BASE_URL: z.string().url().default("http://localhost:10000"),
   WHATSAPP_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
