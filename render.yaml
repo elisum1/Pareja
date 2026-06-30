@@ -10,5 +10,7 @@ services:
         value: "22"
       - key: API_BASE_URL
         value: "https://pareja-f7jx.onrender.com"
+      - key: APP_DOWNLOAD_URL
+        value: "https://expo.dev/@elisum94/pareja-neon"
       - key: APP_LINK_BASE
         value: "https://expo.dev/@elisum94/pareja-neon/--/"

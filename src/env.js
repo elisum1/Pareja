@@ -17,7 +17,12 @@ const envSchema = z.object({
   HOST: z.string().min(1).default("0.0.0.0"),
   SQLITE_PATH: z.string().min(1).default("./db/pareja_neon.sqlite"),
   JWT_SECRET: z.string().min(16),
-  /** Deep link base: Expo Go → https://expo.dev/@owner/slug/--/ | APK → pareja-neon:// */
+  /** URL pública para descargar/abrir la app (Expo Go o build). */
+  APP_DOWNLOAD_URL: z
+    .string()
+    .url()
+    .default("https://expo.dev/@elisum94/pareja-neon"),
+  /** Deep link para aceptar invitación dentro de la app. */
   APP_LINK_BASE: z
     .string()
     .min(1)

@@ -26,14 +26,9 @@ function buildInviteDeepLink(token) {
   return `${normalizeLinkBase(env.APP_LINK_BASE)}invite?token=${encoded}`;
 }
 
-function buildInviteLink(token) {
-  const deepLink = buildInviteDeepLink(token);
-  if (/expo\.dev\//i.test(env.APP_LINK_BASE)) {
-    return deepLink;
-  }
-  const apiBase = String(env.API_BASE_URL || "").replace(/\/+$/, "");
-  const apiLooksPublic = /^https?:\/\//i.test(apiBase) && !/localhost|127\.0\.0\.1/i.test(apiBase);
-  return apiLooksPublic ? `${apiBase}/invites/open/${token}` : deepLink;
+/** Link que se comparte: descarga/abre la app en Expo. */
+function buildInviteLink() {
+  return String(env.APP_DOWNLOAD_URL || "").replace(/\/+$/, "");
 }
 
 invitesRouter.get("/sent/list", requireAuth, async (req, res) => {
@@ -70,7 +65,7 @@ invitesRouter.get("/sent/list", requireAuth, async (req, res) => {
       status: row.status,
       createdAt: row.created_at,
       expiresAt: row.expires_at,
-      link: buildInviteLink(row.token),
+      link: buildInviteLink(),
       acceptedUserId: row.accepted_user_id,
       acceptedEmail: row.accepted_email || null,
       acceptedUsername: row.accepted_username || null,
@@ -188,7 +183,7 @@ invitesRouter.post("/", requireAuth, async (req, res) => {
 
   const token = randomUUID().replace(/-/g, "");
   const inviteId = randomUUID();
-  const link = buildInviteLink(token);
+  const link = buildInviteLink();
 
   await dbQuery(
     `insert into invite (id, inviter_user_id, target_user_id, phone_e164, token, status, expires_at)
