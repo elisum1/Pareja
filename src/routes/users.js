@@ -14,34 +14,44 @@ usersRouter.get("/search", requireAuth, async (req, res) => {
   const like = `%${cleaned}%`;
   const prefixLike = `${cleaned}%`;
   const rows = await dbQuery(
-    `select id, username, display_name, photo_url
+    `select id, email, username, display_name, photo_url
      from app_user
-     where username is not null
-       and id != ?
-       and (lower(username) like ? or lower(coalesce(display_name,'')) like ?)
-     order by case when lower(username) like ? then 0 else 1 end, lower(username)
+     where id != ?
+       and (
+         lower(coalesce(display_name,'')) like ?
+         or lower(email) like ?
+         or lower(coalesce(username,'')) like ?
+       )
+     order by
+       case
+         when lower(coalesce(display_name,'')) like ? then 0
+         when lower(email) like ? then 1
+         else 2
+       end,
+       lower(coalesce(nullif(trim(display_name),''), email))
      limit 12`,
-    [req.userId, like, like, prefixLike]
+    [req.userId, like, like, like, prefixLike, prefixLike]
   );
   res.json({
     users: rows.map((r) => ({
       id: r.id,
-      username: r.username,
+      email: r.email || null,
+      username: r.username || null,
       displayName: r.display_name || null,
       photoUrl: r.photo_url || null
     }))
   });
 });
 
-usersRouter.get("/:username", requireAuth, async (req, res) => {
-  const username = String(req.params.username || "").trim().toLowerCase();
-  if (!username) {
-    res.status(400).json({ error: "USERNAME_REQUIRED" });
+usersRouter.get("/by-id/:id", requireAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) {
+    res.status(400).json({ error: "BAD_REQUEST" });
     return;
   }
   const rows = await dbQuery(
-    "select id, username, display_name, photo_url from app_user where lower(username)=? limit 1",
-    [username]
+    "select id, email, username, display_name, photo_url from app_user where id=? limit 1",
+    [id]
   );
   if (!rows[0]) {
     res.status(404).json({ error: "NOT_FOUND" });
@@ -51,7 +61,8 @@ usersRouter.get("/:username", requireAuth, async (req, res) => {
   res.json({
     user: {
       id: r.id,
-      username: r.username,
+      email: r.email || null,
+      username: r.username || null,
       displayName: r.display_name || null,
       photoUrl: r.photo_url || null
     }

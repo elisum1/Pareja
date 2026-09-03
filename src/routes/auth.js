@@ -1,14 +1,17 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
-const { randomUUID } = require("crypto");
+const { randomUUID, randomInt } = require("crypto");
 const { dbQuery } = require("../db");
+const { env } = require("../env");
 const { signJwt } = require("../auth/jwt");
 const { requireAuth } = require("../auth/middleware");
+const { deliverPasswordResetCode } = require("../services/passwordResetMail");
 
 const authRouter = express.Router();
 
 const USERNAME_REGEX = /^[a-z][a-z0-9_.]{2,19}$/;
+const RESET_CODE_TTL_MS = 30 * 60 * 1000;
 
 const authSchema = z.object({
   email: z.string().email(),
@@ -26,11 +29,6 @@ const profileSchema = z.object({
 });
 
 const onboardingSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(USERNAME_REGEX, "USERNAME_INVALID"),
   displayName: z.string().trim().min(1).max(80),
   age: z
     .union([z.number().int().min(13).max(120), z.string().trim().regex(/^\d{1,3}$/)])
@@ -179,12 +177,6 @@ authRouter.post("/me/onboarding", requireAuth, async (req, res) => {
     return;
   }
 
-  const username = parsed.data.username;
-  if (!USERNAME_REGEX.test(username)) {
-    res.status(400).json({ error: "USERNAME_INVALID" });
-    return;
-  }
-
   const displayName = parsed.data.displayName;
   const age =
     parsed.data.age === undefined || parsed.data.age === null || parsed.data.age === ""
@@ -196,14 +188,10 @@ authRouter.post("/me/onboarding", requireAuth, async (req, res) => {
 
   try {
     await dbQuery(
-      "update app_user set username=?, display_name=?, age=?, phone=?, country=?, city=? where id=?",
-      [username, displayName, age, phone, country, city, req.userId]
+      "update app_user set display_name=?, age=?, phone=?, country=?, city=? where id=?",
+      [displayName, age, phone, country, city, req.userId]
     );
   } catch (e) {
-    if (isUsernameTakenError(e)) {
-      res.status(409).json({ error: "USERNAME_TAKEN" });
-      return;
-    }
     res.status(500).json({ error: "SERVER_ERROR" });
     return;
   }
@@ -262,6 +250,131 @@ authRouter.patch("/me/profile", requireAuth, async (req, res) => {
 
   const user = await loadUser(userId);
   res.json({ user });
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email()
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "CODE_INVALID"),
+  newPassword: z.string().min(8).max(72)
+});
+
+authRouter.post("/forgot-password", async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "BAD_REQUEST", details: parsed.error.flatten() });
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const generic = {
+    ok: true,
+    message: "Si el email está registrado, te enviamos un código de recuperación."
+  };
+
+  try {
+    const rows = await dbQuery("select id, email from app_user where email=? limit 1", [email]);
+    const user = rows[0];
+    if (!user) {
+      res.json(generic);
+      return;
+    }
+
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS).toISOString();
+    const resetId = randomUUID();
+
+    await dbQuery(
+      "update password_reset set used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where user_id=? and used_at is null",
+      [user.id]
+    );
+    await dbQuery(
+      `insert into password_reset (id, user_id, email, code_hash, expires_at)
+       values (?, ?, ?, ?, ?)`,
+      [resetId, user.id, email, codeHash, expiresAt]
+    );
+
+    await deliverPasswordResetCode({ email, code });
+
+    const payload = {
+      ...generic,
+      expiresInMinutes: Math.round(RESET_CODE_TTL_MS / 60000)
+    };
+    if (env.PASSWORD_RESET_RETURN_CODE) {
+      payload.resetCode = code;
+      payload.delivery = "app";
+    }
+    res.json(payload);
+  } catch (e) {
+    console.log("[auth] forgot-password failed:", e?.message || e);
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
+});
+
+authRouter.post("/reset-password", async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "BAD_REQUEST", details: parsed.error.flatten() });
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const code = parsed.data.code.trim();
+  const newPassword = parsed.data.newPassword;
+
+  try {
+    const rows = await dbQuery(
+      `select id, user_id, code_hash, expires_at, used_at
+       from password_reset
+       where email=? and used_at is null
+       order by datetime(created_at) desc
+       limit 1`,
+      [email]
+    );
+    const reset = rows[0];
+    if (!reset) {
+      res.status(400).json({ error: "RESET_CODE_INVALID" });
+      return;
+    }
+
+    if (new Date(reset.expires_at).getTime() < Date.now()) {
+      await dbQuery(
+        "update password_reset set used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
+        [reset.id]
+      );
+      res.status(400).json({ error: "RESET_CODE_EXPIRED" });
+      return;
+    }
+
+    const codeOk = await bcrypt.compare(code, reset.code_hash);
+    if (!codeOk) {
+      res.status(400).json({ error: "RESET_CODE_INVALID" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await dbQuery("update app_user set password_hash=? where id=?", [passwordHash, reset.user_id]);
+    await dbQuery(
+      "update password_reset set used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
+      [reset.id]
+    );
+    await dbQuery(
+      "update password_reset set used_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where user_id=? and used_at is null",
+      [reset.user_id]
+    );
+
+    res.json({ ok: true, message: "Contraseña actualizada. Ya puedes iniciar sesión." });
+  } catch (e) {
+    console.log("[auth] reset-password failed:", e?.message || e);
+    res.status(500).json({ error: "SERVER_ERROR" });
+  }
 });
 
 module.exports = { authRouter };

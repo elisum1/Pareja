@@ -22,18 +22,31 @@ const envSchema = z.object({
     .string()
     .url()
     .default("https://expo.dev/@elisum94/pareja-neon"),
-  /** Deep link para aceptar invitación dentro de la app. */
-  APP_LINK_BASE: z
-    .string()
-    .min(1)
-    .default("https://expo.dev/@elisum94/pareja-neon/--/"),
+  /** Deep link para aceptar invitación dentro de la app instalada. */
+  APP_LINK_BASE: z.string().min(1).default("pareja-neon://"),
   API_BASE_URL: z.string().url().default("http://localhost:10000"),
   WHATSAPP_PROVIDER: z.enum(["mock", "twilio"]).default("mock"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_WHATSAPP_FROM: z.string().optional(),
   /** Orígenes extra para CORS, separados por coma (ej. Expo Web: http://192.168.18.35:8081) */
-  CORS_EXTRA_ORIGINS: z.string().optional()
+  CORS_EXTRA_ORIGINS: z.string().optional(),
+  /**
+   * Si es true, el endpoint de forgot-password incluye el código en la respuesta
+   * (necesario mientras no haya SMTP). En producción con email real, pon false.
+   */
+  PASSWORD_RESET_RETURN_CODE: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return true;
+      if (typeof v === "boolean") return v;
+      return !["0", "false", "no", "off"].includes(String(v).trim().toLowerCase());
+    }),
+  SMTP_HOST: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional()
 });
 
 let env;

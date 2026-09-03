@@ -13,4 +13,4 @@ services:
       - key: APP_DOWNLOAD_URL
         value: "https://expo.dev/@elisum94/pareja-neon"
       - key: APP_LINK_BASE
-        value: "https://expo.dev/@elisum94/pareja-neon/--/"
+        value: "pareja-neon://"

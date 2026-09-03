@@ -12,8 +12,6 @@ function displayNameFromRow(row) {
   if (!row) return "Alguien";
   const name = String(row.display_name || row.displayName || "").trim();
   if (name) return name.split(/\s+/)[0];
-  const username = String(row.username || "").trim();
-  if (username) return `@${username}`;
   const email = String(row.email || "").trim();
   if (email) return email.split("@")[0];
   return "Alguien";

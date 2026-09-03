@@ -6,7 +6,7 @@ const { requireAuth } = require("../auth/middleware");
 const { categories, computeWeightsFromOrder } = require("../domain/testModel");
 const { normalizeAnswersForPersist } = require("../domain/coupleTestAnswers");
 const { relationTests, getRelationTest, computeRelationResult } = require("../domain/relationTestModel");
-const { COMPARE_CATEGORY_KEYS, computeCompareResults } = require("../domain/compareTestModel");
+const { COMPARE_CATEGORY_KEYS, computeCompareResults, validateCompareRatings } = require("../domain/compareTestModel");
 const { notifyPartnersTestChange } = require("../domain/notifications");
 
 const testRouter = express.Router();
@@ -287,13 +287,10 @@ testRouter.post("/compare/submit", requireAuth, async (req, res) => {
     return;
   }
 
-  for (const key of COMPARE_CATEGORY_KEYS) {
-    const a = Number(parsed.data.ratingsA[key]);
-    const b = Number(parsed.data.ratingsB[key]);
-    if (!Number.isFinite(a) || a < 1 || a > 5 || !Number.isFinite(b) || b < 1 || b > 5) {
-      res.status(400).json({ error: "INVALID_RATINGS", key });
-      return;
-    }
+  const missing = validateCompareRatings(parsed.data.ratingsA, parsed.data.ratingsB);
+  if (missing.length) {
+    res.status(400).json({ error: "INVALID_RATINGS", missingQuestionIds: missing.slice(0, 24) });
+    return;
   }
 
   const computed = computeCompareResults(order, parsed.data.ratingsA, parsed.data.ratingsB);
